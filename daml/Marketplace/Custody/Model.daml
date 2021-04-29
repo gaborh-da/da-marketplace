@@ -116,7 +116,7 @@ template LifecycleRequest
               election _ _ = deserialize choice -- will throw if the claims don't match
           Lifecycle.Result{remaining, pending} <- Lifecycle.lifecycle spot election (deserialize description.claims) t
           let serializedRemaining = serialize remaining
-          postAssetVersion <- lookupOrInsertIndex description assetDeposit serializedRemaining
+          postAssetVersion <- lookupOrInsertAssetIndex description assetDeposit serializedRemaining
           when (postAssetVersion /= assetDeposit.asset.id.version) $
             createNewVersionOfDescription description postAssetVersion serializedRemaining
           let payoutSplitQuantities = (\(qty, _) -> qty * assetDeposit.asset.quantity) <$> pending
@@ -128,8 +128,8 @@ template LifecycleRequest
           archive assetDepositCid
           return (assetDepositCid', payoutInstructions)
 
-lookupOrInsertIndex : AssetDescription -> AssetDeposit -> Claims -> Update AssetDescription.Version
-lookupOrInsertIndex assetDescription assetDeposit currentClaims = do
+lookupOrInsertAssetIndex : AssetDescription -> AssetDeposit -> Claims -> Update AssetDescription.Version
+lookupOrInsertAssetIndex assetDescription assetDeposit currentClaims = do
   maybeIndexCid <- lookupByKey @AssetDescription.Index indexKey
   case maybeIndexCid of
     Some indexCid -> do
