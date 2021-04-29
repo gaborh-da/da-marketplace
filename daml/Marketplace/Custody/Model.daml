@@ -108,7 +108,6 @@ template LifecycleRequest
           t <- toDateUTC <$> getTime
           assetDeposit <- fetch assetDepositCid
           (_, description) <- fetchByKey @AssetDescription assetDeposit.asset.id
-          (versionsCid, versions) <- fetchByKey @AssetDescription.Index (fromList . signatory $ description, assetDeposit.asset.id.label)
           let spot : Text -> Date -> Update Decimal
               spot label dt = pure $ fromSomeNote
                 ("Lifecycle: Underlying data '" <> label <> "' missing on " <> show dt)
@@ -117,7 +116,7 @@ template LifecycleRequest
               election _ _ = deserialize choice -- will throw if the claims don't match
           Lifecycle.Result{remaining, pending} <- Lifecycle.lifecycle spot election (deserialize description.claims) t
           let serializedRemaining = serialize remaining
-          (_, postAssetVersion) <- exercise versionsCid AssetDescription.LookupOrInsert with claims = serializedRemaining
+          postAssetVersion <- lookupOrInsertIndex description assetDeposit serializedRemaining
           when (postAssetVersion /= assetDeposit.asset.id.version) $
             createNewVersionOfDescription description postAssetVersion serializedRemaining
           let payoutSplitQuantities = (\(qty, _) -> qty * assetDeposit.asset.quantity) <$> pending
@@ -128,6 +127,25 @@ template LifecycleRequest
           assetDepositCid' <- create assetDeposit with asset = (assetDeposit.asset with id = (assetDeposit.asset.id with version = postAssetVersion))
           archive assetDepositCid
           return (assetDepositCid', payoutInstructions)
+
+lookupOrInsertIndex : AssetDescription -> AssetDeposit -> Claims -> Update AssetDescription.Version
+lookupOrInsertIndex assetDescription assetDeposit currentClaims = do
+  maybeIndexCid <- lookupByKey @AssetDescription.Index indexKey
+  case maybeIndexCid of
+    Some indexCid -> do
+      index <- fetch indexCid
+      pure index.version
+    None -> do
+      create AssetDescription.Index with
+        assetLabel = assetDeposit.asset.id.label
+        claims = currentClaims
+        descriptionSignatories = assetDescriptionSignatories
+        version = possibleNextVersion
+      pure possibleNextVersion
+ where
+  assetDescriptionSignatories = fromList $ signatory assetDescription
+  indexKey = (assetDescriptionSignatories, assetDeposit.asset.id.label, currentClaims)
+  possibleNextVersion = assetDeposit.asset.id.version + 1
 
 createPayoutInstructions : [ContractId AssetDeposit] -> AssetDescription -> AssetDeposit -> Party -> [Party] -> Update [ContractId SettlementInstruction]
 createPayoutInstructions payoutCids assetDescription assetDeposit operator masterAgreementSignatories =
