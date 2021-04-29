@@ -61,10 +61,8 @@ template Service
             issuer = customer
           create AssetDescription.Index
                    with
-                     assetLabel
-                     descriptionSignatories = assetId.signatories
+                     assetId = assetId
                      claims = claims
-                     version = assetId.version
           let ad = AssetDescription
                    with
                      assetId

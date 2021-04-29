@@ -44,11 +44,9 @@ template AssetDescription
 -- Used to do a reverse lookup of the version # given the claims (passed-in from the API)
 template Index
   with
-    assetLabel: Text
+    assetId: Id
     claims: Claims
-    descriptionSignatories: Set Party
-    version: Version
   where
-    signatory descriptionSignatories
-    key (descriptionSignatories, assetLabel, claims) : (Set Party, Text, Claims)
+    signatory assetId.signatories
+    key (assetId.signatories, assetId.label, claims) : (Set Party, Text, Claims)
     maintainer key._1

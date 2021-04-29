@@ -134,17 +134,14 @@ lookupOrInsertAssetIndex assetDescription assetDeposit currentClaims = do
   case maybeIndexCid of
     Some indexCid -> do
       index <- fetch indexCid
-      pure index.version
+      pure index.assetId.version
     None -> do
       create AssetDescription.Index with
-        assetLabel = assetDeposit.asset.id.label
+        assetId = assetDeposit.asset.id with version = possibleNextVersion
         claims = currentClaims
-        descriptionSignatories = assetDescriptionSignatories
-        version = possibleNextVersion
       pure possibleNextVersion
  where
-  assetDescriptionSignatories = fromList $ signatory assetDescription
-  indexKey = (assetDescriptionSignatories, assetDeposit.asset.id.label, currentClaims)
+  indexKey = (assetDeposit.asset.id.signatories, assetDeposit.asset.id.label, currentClaims)
   possibleNextVersion = assetDeposit.asset.id.version + 1
 
 createPayoutInstructions : [ContractId AssetDeposit] -> AssetDescription -> AssetDeposit -> Party -> [Party] -> Update [ContractId SettlementInstruction]
