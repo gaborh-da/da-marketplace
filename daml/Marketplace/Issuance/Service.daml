@@ -59,7 +59,8 @@ template Service
           let
             assetId = Id with signatories = fromList [ provider, customer ]; label = assetLabel; version = 0
             issuer = customer
-          create AssetDescription.Index
+          indexCid <-
+            create AssetDescription.Index
                    with
                      assetId = assetId
                      claims = claims
@@ -71,6 +72,7 @@ template Service
                      safekeepingAccount
                      observers
                      claims
+                     indexReference = indexCid
           adCid <- create ad
           pure (adCid, ad)
 

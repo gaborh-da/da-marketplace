@@ -33,6 +33,7 @@ template AssetDescription
     -- ^ Number of shares/contracts already issued for trading
     -- issuePrice: (Decimal, Asset)
     -- ^ The price & currency of the *initial* offer.
+    indexReference: ContractId Index
     observers : Set Party
   where
     signatory assetId.signatories <> safekeepingAccount.id.signatories

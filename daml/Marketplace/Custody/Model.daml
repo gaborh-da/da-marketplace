@@ -116,9 +116,9 @@ template LifecycleRequest
               election _ _ = deserialize choice -- will throw if the claims don't match
           Lifecycle.Result{remaining, pending} <- Lifecycle.lifecycle spot election (deserialize description.claims) t
           let serializedRemaining = serialize remaining
-          postAssetVersion <- lookupOrInsertAssetIndex description assetDeposit serializedRemaining
+          (indexCid, postAssetVersion) <- lookupOrInsertAssetIndex description assetDeposit serializedRemaining
           when (postAssetVersion /= assetDeposit.asset.id.version) $
-            createNewVersionOfDescription description postAssetVersion serializedRemaining
+            createNewVersionOfDescription description indexCid postAssetVersion serializedRemaining
           let payoutSplitQuantities = (\(qty, _) -> qty * assetDeposit.asset.quantity) <$> pending
           splitResultDeposits <- exercise safekeepingDepositCid AssetDeposit_Split with quantities = payoutSplitQuantities
           let payoutCids = init splitResultDeposits
@@ -128,18 +128,18 @@ template LifecycleRequest
           archive assetDepositCid
           return (assetDepositCid', payoutInstructions)
 
-lookupOrInsertAssetIndex : AssetDescription -> AssetDeposit -> Claims -> Update AssetDescription.Version
+lookupOrInsertAssetIndex : AssetDescription -> AssetDeposit -> Claims -> Update (ContractId AssetDescription.Index, AssetDescription.Version)
 lookupOrInsertAssetIndex assetDescription assetDeposit currentClaims = do
   maybeIndexCid <- lookupByKey @AssetDescription.Index indexKey
   case maybeIndexCid of
     Some indexCid -> do
       index <- fetch indexCid
-      pure index.assetId.version
+      pure (indexCid, index.assetId.version)
     None -> do
-      create AssetDescription.Index with
+      indexCid <- create AssetDescription.Index with
         assetId = assetDeposit.asset.id with version = possibleNextVersion
         claims = currentClaims
-      pure possibleNextVersion
+      pure (indexCid, possibleNextVersion)
  where
   indexKey = (assetDeposit.asset.id.signatories, assetDeposit.asset.id.label, currentClaims)
   possibleNextVersion = assetDeposit.asset.id.version + 1
@@ -172,14 +172,6 @@ createMasterAgreement assetDescription assetDeposit masterAgreementSignatories =
     party1 = assetDescription.safekeepingAccount.owner
     party2 = assetDeposit.account.owner
 
-createNewVersionOfDescription : AssetDescription -> AssetDescription.Version -> Claims -> Update ()
-createNewVersionOfDescription description postAssetVersion serializedRemainingClaims =
-  void $ create description with
-    assetId = adjustedId
-    claims = serializedRemainingClaims
- where
-  adjustedId = description.assetId with version = postAssetVersion
-
 -- TODO this is still not unique e.g. if I have two asset deposits with the same asset
 createTradeId : Id -> Int -> Id
 createTradeId assetId transferNumber =
@@ -187,3 +179,12 @@ createTradeId assetId transferNumber =
     signatories = assetId.signatories
     label = assetId.label <> " " <> show transferNumber <> "th transfer"
     version = assetId.version
+
+createNewVersionOfDescription : AssetDescription -> ContractId AssetDescription.Index -> AssetDescription.Version -> Claims -> Update ()
+createNewVersionOfDescription description indexCid postAssetVersion serializedRemainingClaims =
+  void $ create description with
+    assetId = adjustedId
+    claims = serializedRemainingClaims
+    indexReference = indexCid
+ where
+  adjustedId = description.assetId with version = postAssetVersion
