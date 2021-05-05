@@ -1,0 +1,86 @@
+--
+-- Copyright (c) 2021, Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+--
+
+module Tests.ParametricClaim where
+
+import ContingentClaims.Observation
+import ContingentClaims.Claim.Serializable
+import Daml.Control.Recursion
+import DA.Map (Map)
+import DA.Map qualified as M
+
+type ParameterName = Text
+
+data ParameterDecimal = ParameterDecimal ParameterName
+  deriving (Eq, Show)
+
+data ParameterKey = ParameterKey ParameterName
+  deriving (Eq, Show)
+
+data ParameterBool = ParameterBool ParameterName
+  deriving (Eq, Show)
+
+data ParameterDate t = ParameterDate ParameterName
+  deriving (Eq, Show)
+
+data ParameterValue t =
+    PVDec with decVal: Decimal |
+    PVK with kVal: Key |
+    PVB with bVal: Bool |
+    PVDate with dateVal: t
+
+data ParametricObservation t a
+  = PDecimalConst ParameterDecimal
+  | PDecimalObs ParameterKey
+  | PDecimalLte (ParametricObservation t ParameterDecimal, ParametricObservation t ParameterDecimal)
+  | PDecimalEqu (ParametricObservation t ParameterDecimal, ParametricObservation t ParameterDecimal)
+  | PDecimalAdd (ParametricObservation t ParameterDecimal, ParametricObservation t ParameterDecimal)
+  | PDecimalNeg (ParametricObservation t ParameterDecimal)
+  | PDecimalMul (ParametricObservation t ParameterDecimal, ParametricObservation t ParameterDecimal)
+  | PDecimalDiv (ParametricObservation t ParameterDecimal, ParametricObservation t ParameterDecimal)
+  | PBoolConst ParameterBool
+  | PDateIdentity
+  | PDateConst (ParameterDate t)
+  | PDateLte (ParametricObservation t t, ParametricObservation t t)
+  | PDateEqu (ParametricObservation t t, ParametricObservation t t)
+  deriving (Eq, Show)
+
+data ParametricClaim t a
+  = PZero
+  | POne a
+  | PGive (ParametricClaim t a)
+  | PAnd with lhs: ParametricClaim t a, rhs: ParametricClaim t a
+  | PRepeat with times: ParameterDecimal, claim: ParametricClaim t a
+  | POr with lhs: ParametricClaim t a, rhs: ParametricClaim t a
+  | PCond with predicate: ParametricObservation t Bool, success: ParametricClaim t a, failure: ParametricClaim t a
+  | PScale with k: ParametricObservation t Decimal, claim: ParametricClaim t a
+  | PWhen with predicate: ParametricObservation t Bool, claim: ParametricClaim t a
+  deriving (Eq, Show, Functor)
+
+instantiate : ParametricClaim t a -> Map ParameterName (ParameterValue t) -> Claim t a
+instantiate PZero parameters = Zero
+instantiate (POne a) parameters = One a
+instantiate (PGive c) parameters = Give $ instantiate c parameters
+instantiate (PAnd l r) parameters = And (instantiate l parameters) (instantiate r parameters)
+instantiate (POr l r) parameters = Or (instantiate l parameters) (instantiate r parameters)
+instantiate (PCond p s f) parameters = Cond (instantiateObservation p parameters) (instantiate s parameters) (instantiate f parameters)
+instantiate (PScale k c) parameters = Scale (instantiateObservation k parameters) (instantiate c parameters)
+instantiate (PWhen p c) parameters = When (instantiateObservation p parameters) (instantiate c parameters)
+instantiate parametric parameters = error "not implemented yet"
+
+
+instantiateObservation : ParametricObservation t a -> Map ParameterName (ParameterValue t) -> Observation t a
+instantiateObservation (PDecimalConst (ParameterDecimal name)) parameters =
+    DecimalConst $ lookupDecimalParam name parameters
+instantiateObservation pObs parameters = error "not yet implemented"
+
+-- there needs to be a lookup for each?
+lookupDecimalParam : ParameterName -> Map ParameterName (ParameterValue t) -> Decimal
+lookupDecimalParam n m =
+    case maybeVal of
+      Some (PVDec val) -> val
+      _ -> error $ "Not found: " <> n
+  where
+    maybeVal = M.lookup n m
